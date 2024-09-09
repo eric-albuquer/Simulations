@@ -1,8 +1,15 @@
 import math
 import pygame
 
+#Largura e altura do mapa
 ROWS = 10
 COLS = 10
+
+#Velocidade do jogador
+VELOCITY = 0.05
+
+#Velocidade da mundança de ângulo
+ANGLE_VELOCITY = 0.03
 
 pygame.init()
 
@@ -25,7 +32,7 @@ WIDTH = info.current_w
 HEIGHT = info.current_h
 
 #Tamanho da celula do mini mapa
-CELL_SIZE = WIDTH / 50
+CELL_SIZE = WIDTH / (5 * ROWS)
 
 #Função que desenha o mini mapa
 def drawMap(screen, cell_size):
@@ -85,10 +92,12 @@ def raycast(x, y, angle):
 
 #Algoritmo para transformar a distancia de um raio em uma linha horizontal aplicando efeitos de sombra
 def draw3d(screen, x, y, angle, fov_h, fov_v, max_dist):
+    rays = []
     for i in range(WIDTH):
         dAlpha = fov_h / WIDTH
         alpha = angle - fov_h / 2 + i * dAlpha
         ray = raycast(x, y, alpha)
+        rays.append(ray)
         dist = ray[0]
         visible_dist = dist if dist < max_dist else max_dist
         corrected_dist = visible_dist * math.cos(alpha - angle)
@@ -104,6 +113,8 @@ def draw3d(screen, x, y, angle, fov_h, fov_v, max_dist):
         pygame.draw.line(screen, (199, 137, 88), (i, h1), (i, HEIGHT), 1)
         pygame.draw.line(screen, color, (i, h0), (i, h1), 1)
         pygame.draw.line(screen, (150, 150, 255), (i, 0), (i, h0), 1)
+
+    return rays
 
 #Função que verifica se a próxima posição é válida (sem paredes)
 def playerCanMove(px, py):
@@ -128,15 +139,15 @@ def draw():
 
         # Movimentar o jogador com as setas do teclado
         if keys[pygame.K_LEFT]:
-            angle -= 0.03
+            angle -= ANGLE_VELOCITY
         if keys[pygame.K_RIGHT]:
-            angle += 0.03
+            angle += ANGLE_VELOCITY
         if keys[pygame.K_UP]:
-            dx = math.cos(angle) * 0.03
-            dy = math.sin(angle) * 0.03
+            dx = math.cos(angle) * VELOCITY
+            dy = math.sin(angle) * VELOCITY
         if keys[pygame.K_DOWN]:
-            dx = - math.cos(angle) * 0.03
-            dy = - math.sin(angle) * 0.03
+            dx = - math.cos(angle) * VELOCITY
+            dy = - math.sin(angle) * VELOCITY
         if keys[pygame.K_ESCAPE]:
             running = False
 
@@ -148,11 +159,11 @@ def draw():
 
         dx, dy = 0, 0
 
-        draw3d(screen, px, py, angle, math.pi / 3, 2, ROWS)
+        rays = draw3d(screen, px, py, angle, math.pi / 2, 1.2, ROWS + 1)
         drawMap(screen, CELL_SIZE)
         drawPlayer(screen, px, py, CELL_SIZE)
-        ray = raycast(px, py, angle)
-        drawRay(screen, ray, px, py, CELL_SIZE)
+        for ray in rays:
+            drawRay(screen, ray, px, py, CELL_SIZE)
         
         pygame.display.flip()
     pygame.quit()

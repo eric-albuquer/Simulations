@@ -1,9 +1,18 @@
 import math
 import pygame
 
+PI = math.pi
+
 #Largura e altura do mapa
-ROWS = 10
-COLS = 10
+ROWS = 15
+COLS = 15
+
+#Fov horizontal e vertical
+FOV_V = 1.2
+FOV_H = PI / 3
+
+#Distância de visão
+VIEW_DISTANCE = math.sqrt((ROWS - 3) ** 2 + (COLS - 3) ** 2)
 
 #Velocidade do jogador
 VELOCITY = 0.05
@@ -25,6 +34,12 @@ for i in range(ROWS):
         elif j == COLS - 1: color = [255, 0, 255]
 
         map[i].append(color)
+
+map[10][10] = [255, 255, 0]
+map[5][5] = [255, 100, 100]
+map[7][3] = [0, 150, 100]
+map[11][4] = [200, 150, 50]
+map[10][4] = [200, 150, 50]
 
 #Função do pygame para obter a altura e largura da tela
 info = pygame.display.Info()
@@ -85,10 +100,11 @@ def raycast(x, y, angle):
             dist_x += ry / a
             dist_y += ry
     
+    v = y == int(y)
     value = map[int(y + stepY * d)][int(x + stepX * d)]
     distance = math.sqrt(dist_x ** 2 + dist_y ** 2)   
      
-    return [distance, dist_x * stepX, dist_y * stepY, value]
+    return [distance, dist_x * stepX, dist_y * stepY, value, v]
 
 #Algoritmo para transformar a distancia de um raio em uma linha horizontal aplicando efeitos de sombra
 def draw3d(screen, x, y, angle, fov_h, fov_v, max_dist):
@@ -106,9 +122,10 @@ def draw3d(screen, x, y, angle, fov_h, fov_v, max_dist):
         h1 = HEIGHT / 2 + line_h
         if h0 <= 0: h0 = 0
         if h1 >= HEIGHT: h1 = HEIGHT
-        shadow = visible_dist / max_dist * 255
+        shadow = 1 - (visible_dist / max_dist)
+        if ray[4]: shadow *= 0.8
         r, g, b = ray[3]
-        color = (max(r - shadow, 0), max(g - shadow, 0), max(b - shadow, 0))
+        color = (max(r * shadow, 0), max(g * shadow, 0), max(b * shadow, 0))
         
         pygame.draw.line(screen, (199, 137, 88), (i, h1), (i, HEIGHT), 1)
         pygame.draw.line(screen, color, (i, h0), (i, h1), 1)
@@ -148,6 +165,12 @@ def draw():
         if keys[pygame.K_DOWN]:
             dx = - math.cos(angle) * VELOCITY
             dy = - math.sin(angle) * VELOCITY
+        if keys[pygame.K_d]:
+            dx = math.cos(angle + PI / 2) * VELOCITY
+            dy = math.sin(angle + PI / 2) * VELOCITY
+        if keys[pygame.K_a]:
+            dx = - math.cos(angle + PI / 2) * VELOCITY
+            dy = - math.sin(angle + PI / 2) * VELOCITY
         if keys[pygame.K_ESCAPE]:
             running = False
 
@@ -159,7 +182,7 @@ def draw():
 
         dx, dy = 0, 0
 
-        rays = draw3d(screen, px, py, angle, math.pi / 2, 1.2, ROWS + 1)
+        rays = draw3d(screen, px, py, angle, FOV_H, FOV_V, VIEW_DISTANCE)
         drawMap(screen, CELL_SIZE)
         drawPlayer(screen, px, py, CELL_SIZE)
         for ray in rays:

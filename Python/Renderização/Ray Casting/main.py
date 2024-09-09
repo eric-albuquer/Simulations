@@ -6,6 +6,7 @@ COLS = 10
 
 pygame.init()
 
+#Criando um mapa com bordas
 map = []
 for i in range(ROWS):
     map.append([])
@@ -18,12 +19,15 @@ for i in range(ROWS):
 
         map[i].append(color)
 
+#Função do pygame para obter a altura e largura da tela
 info = pygame.display.Info()
 WIDTH = info.current_w
 HEIGHT = info.current_h
 
+#Tamanho da celula do mini mapa
 CELL_SIZE = WIDTH / 50
 
+#Função que desenha o mini mapa
 def drawMap(screen, cell_size):
     pygame.draw.rect(screen, (127, 127, 127), (0, 0, cell_size * COLS, cell_size * ROWS))
     for i in range(ROWS):
@@ -32,15 +36,18 @@ def drawMap(screen, cell_size):
             x = cell_size * j
             color = (0, 0, 0) if map[i][j] == 0 else map[i][j]
             pygame.draw.rect(screen, color, (x, y, cell_size - 1, cell_size - 1))
- 
+
+#Função para desenhar um circulo representando o player no mapa
 def drawPlayer(screen, px, py, cell_size):
     pygame.draw.circle(screen, (255, 255, 0), (px * cell_size, py * cell_size), cell_size / 4)
-    
+
+#Função que desenha um raio de luz no mapa   
 def drawRay(screen, ray, px, py, cell_size):
     x = (ray[1] + px) * cell_size
     y = (ray[2] + py) * cell_size
     pygame.draw.line(screen, (255, 0, 0), (px * cell_size, py * cell_size), (x, y), 2)
 
+#Algoritmo principal para calcular a distancia de um raio até atingir uma parede
 def raycast(x, y, angle):
     deltaX = math.cos(angle)
     deltaY = math.sin(angle)
@@ -76,6 +83,7 @@ def raycast(x, y, angle):
      
     return [distance, dist_x * stepX, dist_y * stepY, value]
 
+#Algoritmo para transformar a distancia de um raio em uma linha horizontal aplicando efeitos de sombra
 def draw3d(screen, x, y, angle, fov_h, fov_v, max_dist):
     for i in range(WIDTH):
         dAlpha = fov_h / WIDTH
@@ -97,9 +105,11 @@ def draw3d(screen, x, y, angle, fov_h, fov_v, max_dist):
         pygame.draw.line(screen, color, (i, h0), (i, h1), 1)
         pygame.draw.line(screen, (150, 150, 255), (i, 0), (i, h0), 1)
 
+#Função que verifica se a próxima posição é válida (sem paredes)
 def playerCanMove(px, py):
     return map[int(py)][int(px)] == 0
 
+#Função para desenhar o jogo e receber os inputs do teclado
 def draw():
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     running = True
@@ -130,10 +140,13 @@ def draw():
         if keys[pygame.K_ESCAPE]:
             running = False
 
-        if playerCanMove(px + dx, py + dy):
-            px += dx
+        if playerCanMove(px, py + dy):
             py += dy
-            dx, dy = 0, 0
+        
+        if playerCanMove(px + dx, py):
+            px += dx
+
+        dx, dy = 0, 0
 
         draw3d(screen, px, py, angle, math.pi / 3, 2, ROWS)
         drawMap(screen, CELL_SIZE)

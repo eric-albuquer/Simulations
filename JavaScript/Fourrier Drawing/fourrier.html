@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fourrier Draw</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.11.0/lib/p5.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            border: 0;
+            background-color: black;
+            overflow: hidden;
+            text-align: center;
+            justify-content: center;
+            align-items: center;
+        }
+
+        input {
+            margin: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <script>
+        const WIDTH = window.innerWidth
+        const HEIGHT = window.innerWidth
+
+        function dft(x) {
+            const fourrier = []
+            const N = x.length
+
+            for (let k = 0; k < N; k++) {
+                let r = 0
+                let i = 0
+                for (let n = 0; n < N; n++) {
+                    const theta = 2 * Math.PI * k * n / N
+                    r += x[n] * Math.cos(theta)
+                    i -= x[n] * Math.sin(theta)
+                }
+                r /= N
+                i /= N
+                const freq = k
+                const amp = Math.sqrt(i * i + r * r)
+                const phase = Math.atan2(i, r)
+                fourrier[k] = { r, i, freq, amp, phase }
+            }
+            return fourrier
+        }
+
+        let len
+
+        let X = []
+        let Y = []
+
+        let ciclesX = dft(X)
+        let ciclesY = dft(Y)
+
+        ciclesX.sort((a, b) => b.amp - a.amp)
+        ciclesY.sort((a, b) => b.amp - a.amp)
+
+        let dt = 2 * Math.PI / len
+
+        let time = 0
+
+        let wave = []
+
+        function loadData(name) {
+            loadJSON(name, (data) => {
+                X = []
+                Y = []
+                len = data.length
+                for (const point of data) {
+                    X.push(point[0])
+                    Y.push(point[1])
+                }
+                ciclesX = dft(X)
+                ciclesY = dft(Y)
+
+                ciclesX.sort((a, b) => b.amp - a.amp)
+                ciclesY.sort((a, b) => b.amp - a.amp)
+
+                dt = 2 * Math.PI / len
+
+                time = 0
+
+                wave = []
+            })
+        }
+
+        function setup() {
+            createCanvas(WIDTH, HEIGHT)
+            loadData("Waves/eric.json")
+        }
+
+        function draw() {
+            background(0)
+            noFill()
+            stroke(255)
+
+            let xV = 200
+            let yV = height / 3
+
+            let xH = width / 2
+            let yH = 200
+
+            strokeWeight(0.3)
+            for (let i = 0; i < ciclesY.length; i++) {
+                const fV = ciclesY[i]
+                const lxV = xV
+                const lyV = yV
+                const radiusV = fV.amp
+                xV += radiusV * Math.cos(fV.freq * time + fV.phase + Math.PI / 2)
+                yV += radiusV * Math.sin(fV.freq * time + fV.phase + Math.PI / 2)
+
+                const fH = ciclesX[i]
+                const lxH = xH
+                const lyH = yH
+                const radiusH = fH.amp
+                xH += radiusH * Math.cos(fH.freq * time + fH.phase)
+                yH += radiusH * Math.sin(fH.freq * time + fH.phase)
+
+                circle(lxV, lyV, radiusV * 2)
+                line(lxV, lyV, xV, yV)
+
+                circle(lxH, lyH, radiusH * 2)
+                line(lxH, lyH, xH, yH)
+            }
+            wave.unshift([xH, yV])
+
+            stroke(255, 0, 0)
+            strokeWeight(1)
+
+            line(xV, yV, xH, yV)
+            line(xH, yH, xH, yV)
+
+            stroke(255)
+            strokeWeight(3)
+            beginShape()
+
+            for (let i = 0; i < wave.length; i++) {
+                vertex(...wave[i])
+            }
+
+            endShape()
+            if (wave.length >= len) wave = []
+            time += dt
+
+            stroke(0, 255, 0)
+            fill(0, 255, 0)
+            circle(xH, yV, 5)
+        }
+    </script>
+</body>
+
+</html>

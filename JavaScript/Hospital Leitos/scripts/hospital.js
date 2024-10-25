@@ -18,7 +18,7 @@ class Hospital {
                     const tipoLeito = j % 5
                     const equip = []
                     for (const key in Equipamentos) {
-                        if (Math.random() < 0.8)
+                        if (Math.random() < 0.9)
                             equip.push(Equipamentos[key])
                     }
                     this.leitos.push(
@@ -92,12 +92,20 @@ class Hospital {
         return paciente
     }
 
-    prevAlta(){
+    checkPay(){
+        for (const leito of this.leitos) {
+            if (leito.podePagar()){
+                leito.paciente.pagar()
+            }
+        }
+    }
+
+    prevAlta() {
         for (let i = 0; i < this.quantLeitos; i++) {
-            if (this.leitos[i].prevAlta() && Math.random() < 0.5){
+            if (this.leitos[i].prevAlta() && Math.random() < 0.5) {
                 const paciente = this.leitos[i].paciente
                 const gravidade = paciente.gravidade
-                const dias = gravidade * Math.random() * 4
+                const dias = gravidade * Math.random() * 4 + 1
                 const alta = new Date(dataAtual)
                 alta.setDate(alta.getDate() + dias)
                 this.leitos[i].previsaoAlta = alta
@@ -105,7 +113,63 @@ class Hospital {
         }
     }
 
+    alta() {
+        for (let i = 0; i < this.quantLeitos; i++) {
+            if (this.leitos[i].previsaoAlta) {
+                const time = this.leitos[i].previsaoAlta - dataAtual
+                if (time < 0) {
+                    if (Math.random() < 0.2) {
+                        const alta = new Date(dataAtual)
+                        const dias = Math.floor(Math.random() * 3 + 1)
+                        this.leitos[i].reinternacao = true
+                        this.leitos[i].previsaoAlta.setDate(alta.getDate() + dias)
+                    } else {
+                        this.leitos[i].liberarPaciente()
+                    }
+
+                }
+            }
+        }
+    }
+
+    buscarReinternacao() {
+        const leitos = []
+        for (let i = 0; i < this.quantLeitos; i++) {
+            if (this.leitos[i].reinternacao)
+                leitos.push(i)
+        }
+
+        return leitos
+    }
+
+    leitosALimpar() {
+        const leitos = []
+        for (const leito of this.leitos) {
+            if (leito.condicao === Condicao.limpeza)
+                leitos.push(leito.localizacao)
+        }
+        return leitos
+    }
+
+    limparLeitos() {
+        for (const leito of this.leitos) {
+            if (leito.condicao === Condicao.limpeza && Math.random() < 0.1) {
+                leito.condicao = Condicao.livre
+            }
+        }
+    }
+
+    semAlta(){
+        const leitos = []
+        for (const leito of this.leitos) {
+            if (leito.prevAlta())
+                leitos.push(leito)
+        }
+        return leitos
+    }
+
     forward() {
+        this.alta()
         const paciente = this.prioridadeEspera()
         if (!paciente) return
         const leitoIdx = this.procurarLeito(paciente)

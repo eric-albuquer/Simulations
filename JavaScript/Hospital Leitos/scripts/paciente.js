@@ -27,4 +27,9 @@ class Paciente {
 
         return text
     }
+
+    pagar(){
+        if (Math.random() < 0.3)
+            this.statusPagamento = true
+    }
 }

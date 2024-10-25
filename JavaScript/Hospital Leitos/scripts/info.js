@@ -55,10 +55,21 @@ function keyName(obj, value) {
     return null
 }
 
-function timeHours(start, end){
-    return (end - start) / 3600
+function timeMinutes(start, end) {
+    return (end - start) / 60000
 }
 
-function timeMinutes(start, end){
+function timeHours(start, end) {
     return (end - start) / 3600000
 }
+
+function colorHours(dataAtual, data) {
+    const maxHours = 1 * 24
+    let hours = timeHours(dataAtual, data)
+    hours = Math.min(maxHours, hours)
+    const color = 255 * (1 - hours / maxHours)
+
+    return Math.max(color, 30)
+}
+
+let dataAtual = new Date()

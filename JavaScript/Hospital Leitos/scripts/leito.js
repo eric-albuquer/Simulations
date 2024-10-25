@@ -7,6 +7,7 @@ class Leito {
         this.localizacao = localizacao
         this.dataOcupacao = dataOcupacao
         this.previsaoAlta = previsaoAlta
+        this.reinternacao = false
         this.equipamentos = equipamentos || []
         this.historico = historico || []
     }
@@ -64,12 +65,16 @@ class Leito {
     addPaciente(paciente, dataOcupacao, dataAlta) {
         this.paciente = paciente
         this.dataOcupacao = dataOcupacao
-        this.dataAlta = dataAlta
+        this.previsaoAlta = dataAlta
         this.condicao = Condicao.ocupado
     }
 
-    prevAlta(){
-        return this.condicao === Condicao.ocupado && !this.previsaoAlta
+    podePagar(){
+        return this.condicao === Condicao.ocupado && !this.paciente.statusPagamento
+    }
+
+    prevAlta() {
+        return this.condicao === Condicao.ocupado && !this.previsaoAlta && this.paciente.statusPagamento
     }
 
     limpar() {
@@ -99,15 +104,10 @@ class Leito {
         })
 
         this.paciente = null
-        const prob = Math.random()
-        if (prob < 0.01)
-            this.desativar()
-        else if (prob < 0.1)
-            this.manutencao()
-        else
-            this.limpar()
+        this.limpar()
 
         this.dataOcupacao = null
-        this.dataAlta = null
+        this.previsaoAlta = null
+        this.reinternacao = false
     }
 }

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pontos 2d</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.11.0/lib/p5.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            border: 0;
+            background-color: white;
+            overflow: hidden;
+            text-align: center;
+            justify-content: center;
+            align-items: center;
+        }
+
+        button {
+            font-weight: bold;
+            background-color: rgb(178, 255, 147);
+            margin: 20px;
+            padding: 10px;
+            border-radius: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <button onclick="exportData()">Exportar</button>
+    <script>
+        const data = []
+        const processedData = []
+        let drawing = false
+
+        function keyPressed() {
+            drawing = !drawing
+        }
+
+        function exportData() {
+            preProcess(1200)
+            saveJSON(processedData, "dados.json")
+        }
+
+        function setup() {
+            createCanvas(window.innerWidth, window.innerHeight)
+            background(0)
+            frameRate(144)
+        }
+
+        function draw() {
+            if (drawing) {
+                data.push([mouseX - width / 2, mouseY - height / 2])
+                circle(mouseX, mouseY, 3)
+            }
+        }
+
+        function preProcess(size) {
+            let minX = Infinity
+            let maxX = -Infinity
+            let minY = Infinity
+            let maxY = -Infinity
+
+            for (const p of data) {
+                const [x, y] = p
+                if (x < minX) minX = x
+                else if (x > maxX) maxX = x
+
+                if (y < minY) minY = y
+                else if (y > maxY) maxY = y
+            }
+
+            const deltaX = maxX - minX
+            const deltaY = maxY - minY
+
+            const maxD = Math.max(deltaX, deltaY)
+
+            const normalDx = deltaX / maxD
+            const normalDy = deltaY / maxD
+
+            function normalize(p) {
+                const x = normalDx * (p[0] - minX - deltaX / 2) / deltaX
+                const y = normalDy * (p[1] - minY - deltaY / 2) / deltaY
+                return [x, y]
+            }
+
+            const len = 2 ** Math.floor(Math.log2(data.length))
+            const k = data.length / len
+
+            for (let i = 0; i < len; i++) {
+                const idx = Math.floor(i * k)
+                const [x, y] = normalize(data[idx])
+                processedData.push([x * size, y * size])
+            }
+        }
+    </script>
+    <a href="index.html">Draw</a>
+</body>
+
+</html>

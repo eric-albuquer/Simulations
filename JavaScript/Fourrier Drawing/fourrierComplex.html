@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FFT Frequência, Amplitude e Fase</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.11.0/lib/p5.min.js"></script>
+</head>
+
+<body>
+    <script>
+        class Complex {
+            constructor(real, imag) {
+                this.real = real
+                this.imag = imag
+            }
+
+            getAmp() {
+                this.amp = Math.sqrt(this.imag * this.imag + this.real * this.real)
+                return this.amp
+            }
+
+            getPhase() {
+                this.phase = Math.atan2(this.imag, this.real)
+                return this.phase
+            }
+
+            setFreq(k) {
+                this.freq = k
+            }
+
+            static sum(a, b) {
+                return new Complex(
+                    a.real + b.real,
+                    a.imag + b.imag
+                )
+            }
+
+            static sub(a, b) {
+                return new Complex(
+                    a.real - b.real,
+                    a.imag - b.imag
+                )
+            }
+
+            static mul(a, b) {
+                return new Complex(
+                    a.real * b.real - a.imag * b.imag,
+                    a.real * b.imag + a.imag * b.real
+                )
+            }
+        }
+
+        function fft(x) {
+            const N = x.length;
+
+            if (N <= 1) return;
+
+            const even = [];
+            const odd = [];
+
+            for (let i = 0; i < N / 2; i++) {
+                even.push(x[2 * i]);
+                odd.push(x[2 * i + 1]);
+            }
+
+            fft(even);
+            fft(odd);
+
+            for (let k = 0; k < N / 2; k++) {
+                const theta = -2 * Math.PI * k / N;
+                let t = new Complex(
+                    Math.cos(theta),
+                    Math.sin(theta)
+                );
+                t = Complex.mul(t, odd[k]);
+                x[k] = Complex.sum(even[k], t);
+                x[k + N / 2] = Complex.sub(even[k], t);
+            }
+
+            return x;
+        }
+
+        let output = []
+
+        let time = 0
+        let dt = Math.PI * 2 / output.length
+        let wave = []
+
+        function reshape(data, size) {
+            if (!size)
+                size = 2 ** Math.floor(Math.log2(data.length))
+
+            const k = data.length / size
+            const t = []
+            for (let i = 0; i < size; i++) {
+                const idx = Math.floor(i * k)
+                const c = new Complex(...data[idx])
+                t.push(c)
+            }
+
+            return t
+        }
+
+        function normalize(data) {
+            const N = data.length
+            for (let i = 0; i < N; i++) {
+                data[i].real /= N
+                data[i].imag /= N
+                data[i].getAmp()
+                data[i].getPhase()
+            }
+
+            return data
+        }
+
+        function loadData(name) {
+            loadJSON(name, (data) => {
+
+                data = reshape(data, 1024)
+
+                output = fft(data)
+
+                normalize(output)
+
+                time = 0
+
+                dt = 2 * Math.PI / data.length
+
+                wave = []
+            })
+        }
+
+        function arrow(x1, y1, x2, y2, ang = Math.PI / 5) {
+            const dx = x2 - x1
+            const dy = y2 - y1
+            const angle = Math.atan2(dy, dx)
+            const size = Math.sqrt(dx * dx + dy * dy) / 5
+            line(x1, y1, x2, y2)
+            triangle(
+                x2,
+                y2,
+                x2 - Math.cos(angle - ang) * size,
+                y2 - Math.sin(angle - ang) * size,
+                x2 - Math.cos(angle + ang) * size,
+                y2 - Math.sin(angle + ang) * size,
+            )
+        }
+
+        function setup() {
+            createCanvas(window.innerWidth, window.innerHeight)
+            loadData("denival.json")
+        }
+
+        function draw() {
+            background(0)
+            stroke(255)
+            translate(width / 2, height / 2)
+            let x = 0
+            let y = 0
+            for (let i = 0; i < output.length; i++) {
+                noFill()
+                strokeWeight(0.2)
+                const lx = x
+                const ly = y
+                const amp = output[i].amp
+                const freq = i
+                const phase = output[i].phase
+                x += amp * Math.cos(freq * time + phase)
+                y += amp * Math.sin(freq * time + phase)
+                circle(lx, ly, amp * 2)
+                fill(255)
+                strokeWeight(2)
+                arrow(lx, ly, x, y)
+            }
+            wave.unshift([x, y])
+            time += dt
+
+            noFill()
+            stroke(255, 255, 0)
+            strokeWeight(4)
+            beginShape()
+            for (const d of wave) {
+                vertex(...d)
+            }
+            endShape()
+
+            if (wave.length > 3000)
+                wave.pop()
+        }
+    </script>
+    <a href="getData.html">Data</a>
+</body>
+
+</html>

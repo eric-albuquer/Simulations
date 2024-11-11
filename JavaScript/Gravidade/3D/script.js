@@ -18,10 +18,12 @@ class Octree {
     }
 
     getCenterMass() {
+        const invMass = 1 / this.mass
+
         return [
-            this.centerX / this.mass,
-            this.centerY / this.mass,
-            this.centerZ / this.mass,
+            this.centerX * invMass,
+            this.centerY * invMass,
+            this.centerZ * invMass,
         ]
     }
 
@@ -56,10 +58,9 @@ class Octree {
             )
         }
 
-        while (this.points.length) {
-            const p = this.points.pop()
+        for (let j = 0; j < this.points.length; j++) {
             for (let i = 0; i < 8; i++) {
-                if (this.boundary[i].insert(p))
+                if (this.boundary[i].insert(this.points[j]))
                     break
             }
         }
@@ -111,7 +112,7 @@ class Octree {
 
         fx = fy = fz = 0
 
-        if (!this.mass)
+        if (!this.mass || !this.divided)
             return { fx, fy, fz }
 
         const [cx, cy, cz] = this.getCenterMass()
@@ -123,19 +124,18 @@ class Octree {
         const dist2 = dx * dx + dy * dy + dz * dz
         const dist = Math.sqrt(dist2)
 
-        if (this.divided) {
-            if (this.hSize / dist < Octree.theta) {
-                const force = G * p.mass * this.mass / dist2
-                fx = force * dx / dist
-                fy = force * dy / dist
-                fz = force * dz / dist
-            } else {
-                for (let i = 0; i < 8; i++) {
-                    const sForce = this.boundary[i].gravity(p)
-                    fx += sForce.fx
-                    fy += sForce.fy
-                    fz += sForce.fz
-                }
+        if (this.hSize / dist < Octree.theta) {
+            const force = G * p.mass * this.mass / dist2
+            const distInv = 1 / dist
+            fx = force * dx * distInv
+            fy = force * dy * distInv
+            fz = force * dz * distInv
+        } else {
+            for (let i = 0; i < 8; i++) {
+                const sForce = this.boundary[i].gravity(p)
+                fx += sForce.fx
+                fy += sForce.fy
+                fz += sForce.fz
             }
         }
 
@@ -162,9 +162,10 @@ class Particle {
     }
 
     addForce(fx, fy, fz) {
-        this.dx += fx / this.mass
-        this.dy += fy / this.mass
-        this.dz += fz / this.mass
+        const invMass = 1 / this.mass
+        this.dx += fx * invMass
+        this.dy += fy * invMass
+        this.dz += fz * invMass
     }
 
     draw() {
@@ -176,9 +177,9 @@ class Particle {
     }
 }
 
-const totalP = 20000
-const M = 10000
-const octCapacity = 100
+const totalP = 30000
+const M = 20000
+const octCapacity = 500
 const maxDist = 4000
 const drawOct = false
 const particles = new Array(totalP)

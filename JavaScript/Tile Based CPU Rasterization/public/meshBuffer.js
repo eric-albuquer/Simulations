@@ -116,8 +116,11 @@ function createCube(x, y, z) {
     )
 }
 
-for (let i = 0; i < 50; i++) {
-    for (let j = 0; j < 50; j++) {
-        createCube(i, 0, j)
+for (let i = 0; i < 20; i++) {
+    for (let j = 0; j < 20; j++) {
+        for (let k = 0; k < 20; k++) {
+            if (i === 0 || i === 19 || j === 0 || j === 19 || k === 19)
+            createCube(i, k, j)
+        }
     }
 }

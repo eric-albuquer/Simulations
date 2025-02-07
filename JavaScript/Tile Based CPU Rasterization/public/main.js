@@ -46,37 +46,37 @@ const keys = ["w", "a", "s", "d", "Shift", " "]
 
 const keyboardKeys = new Map(keys.map(key => [key, false])); // Inicializa a Map corretamente
 
-document.addEventListener('keydown', function(event) {
+document.addEventListener('keydown', function (event) {
     keyboardKeys[event.key] = true
 });
 
-document.addEventListener('keyup', function(event) {
+document.addEventListener('keyup', function (event) {
     keyboardKeys[event.key] = false
 });
 
-function updatePos(){
+function updatePos() {
     const psin = playerVelocity * Math.sin(angleY)
     const pcos = playerVelocity * Math.cos(angleY)
-    if (keyboardKeys["w"]){
+    if (keyboardKeys["w"]) {
         cameraX += psin
         cameraZ -= pcos
     }
-    if (keyboardKeys["s"]){
+    if (keyboardKeys["s"]) {
         cameraX -= psin
         cameraZ += pcos
     }
-    if (keyboardKeys["a"]){
+    if (keyboardKeys["a"]) {
         cameraX += pcos
         cameraZ += psin
     }
-    if (keyboardKeys["d"]){
+    if (keyboardKeys["d"]) {
         cameraX -= pcos
         cameraZ -= psin
     }
-    if (keyboardKeys["Shift"]){
+    if (keyboardKeys["Shift"]) {
         cameraY -= playerVelocity
     }
-    if (keyboardKeys[" "]){
+    if (keyboardKeys[" "]) {
         cameraY += playerVelocity
     }
 }
@@ -103,11 +103,11 @@ const trianglesLen = Math.floor(meshTriangles.length / 3)
 
 const sharedVertices = new SharedArrayBuffer(4 * trianglesLen * 9)
 const sharedColors = new SharedArrayBuffer(4 * trianglesLen * 9)
-const sharedTriangles = new SharedArrayBuffer(trianglesLen * 2 * 3)
+const sharedTriangles = new SharedArrayBuffer(trianglesLen * 4 * 3)
 
 const vertices = new Float32Array(sharedVertices)
 const colors = new Float32Array(sharedColors)
-const triangles = new Uint16Array(sharedTriangles)
+const triangles = new Uint32Array(sharedTriangles)
 
 vertices.set(meshVertices)
 colors.set(meshColors)
@@ -117,7 +117,13 @@ const sharedScreenVertices = new SharedArrayBuffer(trianglesLen * 36)
 const sharedScreenColors = new SharedArrayBuffer(trianglesLen * 9)
 const sharedTrianglesBox = new SharedArrayBuffer(trianglesLen * 4 * 4)
 
-const workersLen = Math.floor(Math.sqrt(navigator.hardwareConcurrency)) ** 2
+let renderThreads = navigator.hardwareConcurrency - 1
+
+const workersLen = renderThreads
+
+wPerH = 1
+wPerW = renderThreads
+
 const sqrtLen = Math.sqrt(workersLen)
 const workers = new Array(workersLen)
 
@@ -125,8 +131,7 @@ const sharedDone = new SharedArrayBuffer(workersLen)
 
 const doneArray = new Uint8Array(sharedDone)
 
-const dw = Math.ceil(width / sqrtLen)
-const dh = Math.ceil(height / sqrtLen)
+const dw = Math.ceil(width / wPerW)
 
 const dTri = Math.ceil(trianglesLen / workersLen)
 
@@ -135,34 +140,32 @@ const triangleBatch = new Array(workersLen)
 
 let done = 0
 
-for (let i = 0; i < sqrtLen; i++) {
-    const minY = i * dh
-    const maxY = Math.min(minY + dh, height - 1)
-    for (let j = 0; j < sqrtLen; j++) {
-        const minX = j * dw
-        const maxX = Math.min(minX + dw, width - 1)
+const minY = 0
+const maxY = height
 
-        const idx = i * sqrtLen + j
-        screenBoundingBox[idx] = { minX, maxX, minY, maxY }
+for (let i = 0; i < wPerW; i++) {
+    const minX = i * dw
+    const maxX = Math.min(minX + dw, width)
 
-        const start = idx * dTri
-        const end = Math.min(trianglesLen, start + dTri)
-        triangleBatch[idx] = { start, end }
+    screenBoundingBox[i] = { minX, maxX, minY, maxY }
 
-        const worker = new Worker("worker.js")
+    const start = i * dTri
+    const end = Math.min(trianglesLen, start + dTri)
+    triangleBatch[i] = { start, end }
 
-        worker.onmessage = (event) => {
-            if (++done === workersLen) {
-                done = 0
+    const worker = new Worker("worker.js")
 
-                frame.set(frameBuffer)
-                ctx.putImageData(imageData, 0, 0)
-                requestAnimationFrame(render)
-            }
+    worker.onmessage = (_) => {
+        if (++done === workersLen) {
+            done = 0
+
+            frame.set(frameBuffer)
+            ctx.putImageData(imageData, 0, 0)
+            requestAnimationFrame(render)
         }
-
-        workers[idx] = worker
     }
+
+    workers[i] = worker
 }
 
 function setup() {
@@ -213,7 +216,7 @@ function render() {
     updatePos()
 
     // Limpeza de buffers
-    zBuffer.fill(0x7fffffff);
+    zBuffer.fill(0x800000);
     doneArray.fill(0);
     frameBuffer.fill(0);
 

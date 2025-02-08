@@ -2,8 +2,9 @@ let frameBuffer, zBuffer, vertices, colors, screenVertices, screenColors;
 let trianglesBox, done, matrix, triangles;
 let width, height, workerIdx, centerX, centerY;
 let triangleBatch, boundingBox
-let vIdx, startTidx
-let tIdxArray, startIdxFragment, deltaHFrag, startZIdxRow
+let vIdx, startTidx, startScreenIdx
+let tIdxArray, startIdxFragment, deltaHFrag
+let canRender, doneRender
 const floatToInt = 0x800000
 
 const p0 = { x: 0, y: 0 }
@@ -66,11 +67,29 @@ function dot(m, v) {
     }
 }
 
-function outsideScreen(v) {
+function clearBuffers() {
+    let idxRow = startScreenIdx
+    let fIdxRow = startIdxFragment
+    for (let y = boundingBox.minY; y < boundingBox.maxY; y++) {
+        let idx = idxRow
+        let fIdx = fIdxRow
+        for (let x = boundingBox.minX; x < boundingBox.maxX; x++) {
+            zBuffer[idx++] = floatToInt
+            frameBuffer[fIdx++] = 0
+            frameBuffer[fIdx++] = 0
+            frameBuffer[fIdx++] = 0
+            frameBuffer[fIdx++] = 0
+        }
+        idxRow += width
+        fIdxRow += deltaHFrag
+    }
+}
+
+function insideScreen(v) {
     return (
-        v.x < 0 || v.x >= width ||
-        v.y < 0 || v.y >= height ||
-        v.z < -floatToInt || v.z > floatToInt
+        v.x >= 0 && v.x < width &&
+        v.y >= 0 && v.y < height &&
+        v.z >= -floatToInt && v.z <= floatToInt
     )
 }
 
@@ -82,6 +101,7 @@ function toScreen(v, centerX, centerY) {
 }
 
 function vertexShader() {
+    done[workerIdx] = 0
     let idx = vIdx
     let tIdx = startTidx
 
@@ -230,11 +250,9 @@ function rasterize() {
 
 function fragmentShader() {
     let idxRow = startIdxFragment
-    let zIdxRow = startZIdxRow
 
     for (let y = boundingBox.minY; y < boundingBox.maxY; y++) {
         let idx = idxRow
-        let zIdx = zIdxRow
         for (let x = boundingBox.minX; x < boundingBox.maxX; x++) {
             const alpha = frameBuffer[idx + 3]
             if (alpha === 0) {
@@ -244,12 +262,49 @@ function fragmentShader() {
                 frameBuffer[idx + 2] = (1 - yH) * 221 + 255 * yH
                 frameBuffer[idx + 3] = 255
             }
-            zIdx++
             idx += 4
         }
         idxRow += deltaHFrag
-        zIdxRow += width
     }
+}
+
+function render() {
+    vertexShader()
+
+    clearBuffers()
+
+    let idxBox = 0
+
+    let i = 0
+
+    while (done.includes(0)) { }
+
+    while (i < triangles.length) {
+        const i0 = tIdxArray[i++]
+        const i1 = tIdxArray[i++]
+        const i2 = tIdxArray[i++]
+
+        box.minX = trianglesBox[idxBox++];
+        box.minY = trianglesBox[idxBox++];
+        box.maxX = trianglesBox[idxBox++];
+        box.maxY = trianglesBox[idxBox++];
+
+        if (intersect()) {
+            v0.x = screenVertices[i0]; v0.y = screenVertices[i0 + 1]; v0.z = screenVertices[i0 + 2];
+            v1.x = screenVertices[i1]; v1.y = screenVertices[i1 + 1]; v1.z = screenVertices[i1 + 2];
+            v2.x = screenVertices[i2]; v2.y = screenVertices[i2 + 1]; v2.z = screenVertices[i2 + 2];
+
+            if (insideScreen(v0) || insideScreen(v1) || insideScreen(v2)) {
+                c0.r = screenColors[i0]; c0.g = screenColors[i0 + 1]; c0.b = screenColors[i0 + 2];
+                c1.r = screenColors[i1]; c1.g = screenColors[i1 + 1]; c1.b = screenColors[i1 + 2];
+                c2.r = screenColors[i2]; c2.g = screenColors[i2 + 1]; c2.b = screenColors[i2 + 2];
+
+                rasterize()
+            }
+        }
+    }
+
+    fragmentShader()
 }
 
 self.onmessage = (event) => {
@@ -274,51 +329,15 @@ self.onmessage = (event) => {
         vIdx = 3 * triangleBatch.start
         startTidx = triangleBatch.start << 2
         deltaHFrag = width << 2
-        startZIdxRow = boundingBox.minY * width + boundingBox.minX
-        startIdxFragment = (boundingBox.minY * width + boundingBox.minX) << 2
+        startScreenIdx = boundingBox.minY * width + boundingBox.minX
+        startIdxFragment = startScreenIdx << 2
         tIdxArray = new Uint32Array(triangles.length)
         for (let i = 0; i < triangles.length; i++) {
             tIdxArray[i] = triangles[i] * 3
         }
-        return;
+        return
     }
 
-    vertexShader()
-
-    let idxBox = 0
-
-    let i = 0
-
-    while (done.includes(0)) { }
-
-    while (i < triangles.length) {
-        const i0 = tIdxArray[i++]
-        const i1 = tIdxArray[i++]
-        const i2 = tIdxArray[i++]
-
-        box.minX = trianglesBox[idxBox++]
-        box.minY = trianglesBox[idxBox++]
-        box.maxX = trianglesBox[idxBox++]
-        box.maxY = trianglesBox[idxBox++]
-
-        if (!intersect())
-            continue
-
-        v0.x = screenVertices[i0]; v0.y = screenVertices[i0 + 1]; v0.z = screenVertices[i0 + 2];
-        v1.x = screenVertices[i1]; v1.y = screenVertices[i1 + 1]; v1.z = screenVertices[i1 + 2];
-        v2.x = screenVertices[i2]; v2.y = screenVertices[i2 + 1]; v2.z = screenVertices[i2 + 2];
-
-        if (outsideScreen(v0) && outsideScreen(v1) && outsideScreen(v2))
-            continue
-
-        c0.r = screenColors[i0]; c0.g = screenColors[i0 + 1]; c0.b = screenColors[i0 + 2];
-        c1.r = screenColors[i1]; c1.g = screenColors[i1 + 1]; c1.b = screenColors[i1 + 2];
-        c2.r = screenColors[i2]; c2.g = screenColors[i2 + 1]; c2.b = screenColors[i2 + 2];
-
-        rasterize()
-    }
-
-    fragmentShader()
-
-    self.postMessage(true)
+    render()
+    self.postMessage(0)
 }

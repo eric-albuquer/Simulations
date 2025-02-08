@@ -12,7 +12,7 @@ canvas.height = height
 
 let fps = 0;
 
-const aspectRatio = width / height
+const aspectRatio = height / width
 
 let fov = Math.PI / 3
 const near = 0.1
@@ -29,6 +29,8 @@ let angleY = 0
 let cameraX = -2
 let cameraY = 1
 let cameraZ = 4
+
+let frameCount = 0;
 
 canvas.addEventListener('mousemove', function (event) {
     if (document.pointerLockElement === canvas) {
@@ -117,21 +119,15 @@ const sharedScreenVertices = new SharedArrayBuffer(trianglesLen * 36)
 const sharedScreenColors = new SharedArrayBuffer(trianglesLen * 9)
 const sharedTrianglesBox = new SharedArrayBuffer(trianglesLen * 4 * 4)
 
-let renderThreads = navigator.hardwareConcurrency - 1
+const workersLen = navigator.hardwareConcurrency - 1
 
-const workersLen = renderThreads
-
-wPerH = 1
-wPerW = renderThreads
-
-const sqrtLen = Math.sqrt(workersLen)
 const workers = new Array(workersLen)
 
 const sharedDone = new SharedArrayBuffer(workersLen)
 
 const doneArray = new Uint8Array(sharedDone)
 
-const dw = Math.ceil(width / wPerW)
+const dw = Math.ceil(width / workersLen)
 
 const dTri = Math.ceil(trianglesLen / workersLen)
 
@@ -140,32 +136,23 @@ const triangleBatch = new Array(workersLen)
 
 let done = 0
 
-const minY = 0
-const maxY = height
-
-for (let i = 0; i < wPerW; i++) {
+for (let i = 0; i < workersLen; i++) {
     const minX = i * dw
     const maxX = Math.min(minX + dw, width)
 
-    screenBoundingBox[i] = { minX, maxX, minY, maxY }
+    screenBoundingBox[i] = { minX, maxX, minY: 0, maxY: height }
 
     const start = i * dTri
     const end = Math.min(trianglesLen, start + dTri)
     triangleBatch[i] = { start, end }
 
-    const worker = new Worker("worker.js")
+    workers[i] = new Worker("worker.js")
+}
 
-    worker.onmessage = (_) => {
-        if (++done === workersLen) {
-            done = 0
-
-            frame.set(frameBuffer)
-            ctx.putImageData(imageData, 0, 0)
-            requestAnimationFrame(render)
-        }
+for (let i = 0; i < workersLen; i++) {
+    workers[i].onmessage = () => {
+        done++
     }
-
-    workers[i] = worker
 }
 
 function setup() {
@@ -186,8 +173,12 @@ function setup() {
             sharedDone,
             workerIdx: i,
             sharedMatrix,
-            sharedTriangles
+            sharedTriangles,
         })
+    }
+
+    for (const worker of workers) {
+        worker.postMessage(0)
     }
 }
 
@@ -198,41 +189,38 @@ function renderFPS(fps) {
     ctx.fillText(fpsText, 10, 30);
 }
 
-let lastFrameTime = performance.now();
-let frameCount = 0;
+let lastFrameTime = Date.now();
 
 function render() {
-    let currentTime = performance.now();
-    let deltaTime = currentTime - lastFrameTime;
+    updatePos();
 
-    if (deltaTime >= 1000) {  // A cada 1000ms (1 segundo)
-        lastFrameTime = currentTime;
-        fps = frameCount;
-        frameCount = 0;
+    if (done >= workersLen) {
+        done = 0
+        const currentTime = Date.now();
+        const deltaTime = currentTime - lastFrameTime;
+
+        if (deltaTime >= 1000) {
+            lastFrameTime = currentTime;
+            fps = frameCount;
+            frameCount = 0;
+        }
+        frameCount++;
+        frame.set(frameBuffer)
+        ctx.putImageData(imageData, 0, 0)
+        renderFPS(fps);
+
+        // Processamento de matriz e transformações
+        perspective(matrix, fov, aspectRatio, near, far);
+        rotateX(matrix, angleX);
+        rotateY(matrix, angleY);
+        translate(matrix, cameraX, cameraY, cameraZ);
+
+        for (const worker of workers) {
+            worker.postMessage(0)
+        }
     }
-    // Atualiza o contador de FPS
-    frameCount++;
 
-    updatePos()
-
-    // Limpeza de buffers
-    zBuffer.fill(0x800000);
-    doneArray.fill(0);
-    frameBuffer.fill(0);
-
-    // Processamento de matriz e transformações
-    perspective(matrix, fov, aspectRatio, near, far);
-    rotateX(matrix, angleX);
-    rotateY(matrix, angleY);
-    translate(matrix, cameraX, cameraY, cameraZ);
-
-    // Enviar mensagens para os workers
-    for (let i = 0; i < workersLen; i++) {
-        workers[i].postMessage(0);
-    }
-
-    // Renderizar FPS na tela
-    renderFPS(fps);
+    requestAnimationFrame(render)
 }
 
 setup()

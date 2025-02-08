@@ -85,11 +85,11 @@ function clearBuffers() {
     }
 }
 
-function insideScreen(v) {
+function insideScreen(i) {
     return (
-        v.x >= 0 && v.x < width &&
-        v.y >= 0 && v.y < height &&
-        v.z >= -floatToInt && v.z <= floatToInt
+        screenVertices[i] >= 0 && screenVertices[i] < width &&
+        screenVertices[i + 1] >= 0 && screenVertices[i + 1] < height &&
+        screenVertices[i + 2] >= -floatToInt && screenVertices[i + 2] <= floatToInt
     )
 }
 
@@ -98,6 +98,40 @@ function toScreen(v, centerX, centerY) {
     v.x = (v.x + 1) * centerX
     v.y = (v.y + 1) * centerY
     v.z *= floatToInt
+}
+
+function intersect() {
+    const x1 = max(boundingBox.minX, box.minX)
+    const y1 = max(boundingBox.minY, box.minY)
+    const x2 = min(boundingBox.maxX, box.maxX)
+    const y2 = min(boundingBox.maxY, box.maxY)
+
+    if (x1 < x2 && y1 < y2) {
+        box.minX = x1
+        box.minY = y1
+        box.maxX = x2
+        box.maxY = y2
+
+        return true
+    }
+
+    return false
+}
+
+function isTopLeft(start, end) {
+    const edgeX = end.x - start.x
+    const edgeY = end.y - start.y
+
+    return (edgeY === 0 && edgeX > 0) || edgeY < 0
+}
+
+function cross2d(a, b, p) {
+    const abx = b.x - a.x
+    const aby = b.y - a.y
+    const apx = p.x - a.x
+    const apy = p.y - a.y
+
+    return abx * apy - aby * apx
 }
 
 function vertexShader() {
@@ -138,42 +172,11 @@ function vertexShader() {
         }
         trianglesBox[tIdx++] = max(0, minX)
         trianglesBox[tIdx++] = max(0, minY)
-        trianglesBox[tIdx++] = min(width, maxX)
-        trianglesBox[tIdx++] = min(height, maxY)
+        trianglesBox[tIdx++] = maxX
+        trianglesBox[tIdx++] = maxY
     }
 
     done[workerIdx] = 1
-}
-
-function intersect() {
-    const x1 = max(boundingBox.minX, box.minX)
-    const y1 = max(boundingBox.minY, box.minY)
-    const x2 = min(boundingBox.maxX, box.maxX)
-    const y2 = min(boundingBox.maxY, box.maxY)
-
-    if (x1 < x2 && y1 < y2) {
-        box.minX = x1
-        box.minY = y1
-        box.maxX = x2
-        box.maxY = y2
-
-        return true
-    }
-
-    return false
-}
-
-function isTopLeft(start, end) {
-    const edge = { x: end.x - start.x, y: end.y - start.y }
-
-    return (edge.y === 0 && edge.x > 0) || edge.y < 0
-}
-
-function cross2d(a, b, p) {
-    const ab = { x: b.x - a.x, y: b.y - a.y }
-    const ap = { x: p.x - a.x, y: p.y - a.y }
-
-    return ab.x * ap.y - ab.y * ap.x
 }
 
 function rasterize() {
@@ -280,21 +283,21 @@ function render() {
     while (done.includes(0)) { }
 
     while (i < triangles.length) {
-        const i0 = tIdxArray[i++]
-        const i1 = tIdxArray[i++]
-        const i2 = tIdxArray[i++]
-
         box.minX = trianglesBox[idxBox++];
         box.minY = trianglesBox[idxBox++];
         box.maxX = trianglesBox[idxBox++];
         box.maxY = trianglesBox[idxBox++];
 
         if (intersect()) {
-            v0.x = screenVertices[i0]; v0.y = screenVertices[i0 + 1]; v0.z = screenVertices[i0 + 2];
-            v1.x = screenVertices[i1]; v1.y = screenVertices[i1 + 1]; v1.z = screenVertices[i1 + 2];
-            v2.x = screenVertices[i2]; v2.y = screenVertices[i2 + 1]; v2.z = screenVertices[i2 + 2];
+            const i0 = tIdxArray[i]
+            const i1 = tIdxArray[i + 1]
+            const i2 = tIdxArray[i + 2]
 
-            if (insideScreen(v0) || insideScreen(v1) || insideScreen(v2)) {
+            if (insideScreen(i0) || insideScreen(i1) || insideScreen(i2)) {
+                v0.x = screenVertices[i0]; v0.y = screenVertices[i0 + 1]; v0.z = screenVertices[i0 + 2];
+                v1.x = screenVertices[i1]; v1.y = screenVertices[i1 + 1]; v1.z = screenVertices[i1 + 2];
+                v2.x = screenVertices[i2]; v2.y = screenVertices[i2 + 1]; v2.z = screenVertices[i2 + 2];
+                
                 c0.r = screenColors[i0]; c0.g = screenColors[i0 + 1]; c0.b = screenColors[i0 + 2];
                 c1.r = screenColors[i1]; c1.g = screenColors[i1 + 1]; c1.b = screenColors[i1 + 2];
                 c2.r = screenColors[i2]; c2.g = screenColors[i2 + 1]; c2.b = screenColors[i2 + 2];
@@ -302,6 +305,7 @@ function render() {
                 rasterize()
             }
         }
+        i += 3
     }
 
     fragmentShader()

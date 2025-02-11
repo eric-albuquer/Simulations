@@ -1,45 +1,36 @@
-let frameBuffer, zBuffer, vertices, colors, screenVertices, screenColors;
-let trianglesBox, done, matrix, triangles;
-let width, height, workerIdx, centerX, centerY;
-let triangleBatch, boundingBox
-let vIdx, startTidx, startScreenIdx
-let tIdxArray, startIdxFragment, deltaHFrag
-let canRender, doneRender
-const floatToInt = 0x800000
+let WIDTH,
+    HEIGHT,
+    frameBuffer,
+    workerBox,
+    startBatch,
+    endBatch,
+    matrix,
+    triangleData,
+    vertices,
+    triangles,
+    colors,
+    triangleIdxArray,
+    centerX, centerY,
+    localFrameBuffer,
+    localZBuffer,
+    workerWidth,
+    workerHeight,
+    deltaFrameIdx,
+    deltaLocalFrameIdx,
+    startIdxFrame,
+    doneArray,
+    workerIdx,
+    startTriangleIdx,
+    startTriangleDataIdx,
+    trianglesLen
 
-const p0 = { x: 0, y: 0 }
-
-const box = {
-    minX: 0,
-    maxX: width,
-    minY: 0,
-    maxY: height
+function vec3(x, y, z) {
+    return { x, y, z }
 }
 
-class vec3 {
-    constructor(x, y, z) {
-        this.x = x
-        this.y = y
-        this.z = z
-    }
+function createBox(minX, minY, maxX, maxY) {
+    return { minX, minY, maxX, maxY }
 }
-
-class color {
-    constructor(r, g, b) {
-        this.r = r
-        this.g = g
-        this.b = b
-    }
-}
-
-const vec = new vec3(0, 0, 0)
-const v0 = new vec3(0, 0, 0)
-const v1 = new vec3(0, 0, 0)
-const v2 = new vec3(0, 0, 0)
-
-const c0 = new color(0, 0, 0)
-const c1 = new color(0, 0, 0)
-const c2 = new color(0, 0, 0)
 
 function max(a, b) {
     return a > b ? a : b
@@ -68,49 +59,41 @@ function dot(m, v) {
 }
 
 function clearBuffers() {
-    let idxRow = startScreenIdx
-    let fIdxRow = startIdxFragment
-    for (let y = boundingBox.minY; y < boundingBox.maxY; y++) {
-        let idx = idxRow
-        let fIdx = fIdxRow
-        for (let x = boundingBox.minX; x < boundingBox.maxX; x++) {
-            zBuffer[idx++] = floatToInt
-            frameBuffer[fIdx++] = 0
-            frameBuffer[fIdx++] = 0
-            frameBuffer[fIdx++] = 0
-            frameBuffer[fIdx++] = 0
-        }
-        idxRow += width
-        fIdxRow += deltaHFrag
-    }
+    localFrameBuffer.fill(0)
+    localZBuffer.fill(Infinity)
 }
 
-function insideScreen(i) {
+function insideScreen(v) {
     return (
-        screenVertices[i] >= 0 && screenVertices[i] < width &&
-        screenVertices[i + 1] >= 0 && screenVertices[i + 1] < height &&
-        screenVertices[i + 2] >= -floatToInt && screenVertices[i + 2] <= floatToInt
+        v.x > -1 && v.x < 1 &&
+        v.y > -1 && v.y < 1 &&
+        v.z > -1 && v.z < 1
     )
 }
 
-
-function toScreen(v, centerX, centerY) {
-    v.x = (v.x + 1) * centerX
-    v.y = (v.y + 1) * centerY
-    v.z *= floatToInt
+function toScreen(v) {
+    v.x = Math.floor((v.x + 1) * centerX)
+    v.y = Math.floor((v.y + 1) * centerY)
 }
 
-function intersect() {
-    const x1 = max(boundingBox.minX, box.minX)
-    const y1 = max(boundingBox.minY, box.minY)
-    const x2 = min(boundingBox.maxX, box.maxX)
-    const y2 = min(boundingBox.maxY, box.maxY)
+function toLocal(box) {
+    box.minX = box.minX - workerBox.minX
+    box.minY = box.minY
+    box.maxX = box.maxX - workerBox.minX
+    box.maxY = box.maxY
+}
+
+function intersect(a, b) {
+    const x1 = max(a.minX, b.minX)
+    const y1 = max(a.minY, b.minY)
+    const x2 = min(a.maxX, b.maxX)
+    const y2 = min(a.maxY, b.maxY)
 
     if (x1 < x2 && y1 < y2) {
-        box.minX = x1
-        box.minY = y1
-        box.maxX = x2
-        box.maxY = y2
+        b.minX = x1
+        b.minY = y1
+        b.maxX = x2
+        b.maxY = y2
 
         return true
     }
@@ -135,78 +118,104 @@ function cross2d(a, b, p) {
 }
 
 function vertexShader() {
-    done[workerIdx] = 0
-    let idx = vIdx
-    let tIdx = startTidx
-
-    for (let i = triangleBatch.start; i < triangleBatch.end; i++) {
-        let minX = width
-        let maxX = 0
-        let minY = height
-        let maxY = 0
-
+    doneArray[workerIdx] = 0
+    let triangleIdx = startTriangleIdx
+    let triangleDataIdx = startTriangleDataIdx
+    let minX, minY, maxX, maxY, v0Idx, visible, area
+    let v = [vec3(0, 0, 0), vec3(0, 0, 0), vec3(0, 0, 0)]
+    let c = [vec3(0, 0, 0), vec3(0, 0, 0), vec3(0, 0, 0)]
+    for (let i = startBatch; i < endBatch; i++) {
+        minX = WIDTH
+        minY = HEIGHT
+        maxX = 0
+        maxY = 0
+        visible = false
         for (let j = 0; j < 3; j++) {
-            const i0 = triangles[idx++] * 3
-            const i1 = i0 + 1
-            const i2 = i1 + 1
+            v0Idx = triangleIdxArray[triangleIdx++]
 
-            vec.x = vertices[i0]
-            vec.y = vertices[i1]
-            vec.z = vertices[i2]
+            v[j].x = vertices[v0Idx]
+            v[j].y = vertices[v0Idx + 1]
+            v[j].z = vertices[v0Idx + 2]
 
-            dot(matrix, vec)
-            toScreen(vec, centerX, centerY)
+            c[j].x = colors[v0Idx] * 255
+            c[j].y = colors[v0Idx + 1] * 255
+            c[j].z = colors[v0Idx + 2] * 255
 
-            screenVertices[i0] = vec.x
-            screenVertices[i1] = vec.y
-            screenVertices[i2] = vec.z
+            dot(matrix, v[j])
 
-            minX = min(vec.x, minX)
-            maxX = max(vec.x, maxX)
-            minY = min(vec.y, minY)
-            maxY = max(vec.y, maxY)
+            if (insideScreen(v[j]))
+                visible = true
 
-            screenColors[i0] = colors[i0] * 255
-            screenColors[i1] = colors[i1] * 255
-            screenColors[i2] = colors[i2] * 255
+            toScreen(v[j])
+
+            minX = min(v[j].x, minX)
+            minY = min(v[j].y, minY)
+            maxX = max(v[j].x, maxX)
+            maxY = max(v[j].y, maxY)
         }
-        trianglesBox[tIdx++] = max(0, minX)
-        trianglesBox[tIdx++] = max(0, minY)
-        trianglesBox[tIdx++] = maxX
-        trianglesBox[tIdx++] = maxY
+        area = cross2d(v[0], v[1], v[2])
+
+        visible = visible && area > 0
+
+        triangleData.setUint8(triangleDataIdx, visible, true)
+
+        if (visible) {
+            triangleData.setInt16(triangleDataIdx + 1, minX, true)
+            triangleData.setInt16(triangleDataIdx + 3, minY, true)
+            triangleData.setInt16(triangleDataIdx + 5, maxX, true)
+            triangleData.setInt16(triangleDataIdx + 7, maxY, true)
+
+            triangleData.setInt32(triangleDataIdx + 9, v[0].x, true)
+            triangleData.setInt32(triangleDataIdx + 13, v[0].y, true)
+            triangleData.setFloat32(triangleDataIdx + 17, v[0].z, true)
+
+            triangleData.setInt32(triangleDataIdx + 21, v[1].x, true)
+            triangleData.setInt32(triangleDataIdx + 25, v[1].y, true)
+            triangleData.setFloat32(triangleDataIdx + 29, v[1].z, true)
+
+            triangleData.setInt32(triangleDataIdx + 33, v[2].x, true)
+            triangleData.setInt32(triangleDataIdx + 37, v[2].y, true)
+            triangleData.setFloat32(triangleDataIdx + 41, v[2].z, true)
+
+            triangleData.setUint8(triangleDataIdx + 45, c[0].x, true)
+            triangleData.setUint8(triangleDataIdx + 46, c[0].y, true)
+            triangleData.setUint8(triangleDataIdx + 47, c[0].z, true)
+
+            triangleData.setUint8(triangleDataIdx + 48, c[1].x, true)
+            triangleData.setUint8(triangleDataIdx + 49, c[1].y, true)
+            triangleData.setUint8(triangleDataIdx + 50, c[1].z, true)
+
+            triangleData.setUint8(triangleDataIdx + 51, c[2].x, true)
+            triangleData.setUint8(triangleDataIdx + 52, c[2].y, true)
+            triangleData.setUint8(triangleDataIdx + 53, c[2].z, true)
+
+            triangleData.setFloat32(triangleDataIdx + 54, 1 / area, true)
+
+            triangleData.setFloat32(triangleDataIdx + 58, v[1].y - v[2].y, true)
+            triangleData.setFloat32(triangleDataIdx + 62, v[2].y - v[0].y, true)
+            triangleData.setFloat32(triangleDataIdx + 66, v[0].y - v[1].y, true)
+
+            triangleData.setFloat32(triangleDataIdx + 70, v[2].x - v[1].x, true)
+            triangleData.setFloat32(triangleDataIdx + 74, v[0].x - v[2].x, true)
+            triangleData.setFloat32(triangleDataIdx + 78, v[1].x - v[0].x, true)
+
+            triangleData.setFloat32(triangleDataIdx + 82, isTopLeft(v[1], v[2]) ? 0 : -0.0001, true)
+            triangleData.setFloat32(triangleDataIdx + 86, isTopLeft(v[2], v[0]) ? 0 : -0.0001, true)
+            triangleData.setFloat32(triangleDataIdx + 90, isTopLeft(v[0], v[1]) ? 0 : -0.0001, true)
+        }
+
+        triangleDataIdx += 94
     }
 
-    done[workerIdx] = 1
+    doneArray[workerIdx] = 1
 }
 
-function rasterize() {
-    const area = cross2d(v0, v1, v2)
-
-    if (area < 0)
-        return
-
-    const invArea = 1 / area
-
-    const dW0Col = v1.y - v2.y
-    const dW1Col = v2.y - v0.y
-    const dW2Col = v0.y - v1.y
-
-    const dW0Row = v2.x - v1.x
-    const dW1Row = v0.x - v2.x
-    const dW2Row = v1.x - v0.x
-
-    const bias0 = isTopLeft(v1, v2) ? 0 : -0.0001
-    const bias1 = isTopLeft(v2, v0) ? 0 : -0.0001
-    const bias2 = isTopLeft(v0, v1) ? 0 : -0.0001
-
-    p0.x = box.minX + 0.5
-    p0.y = box.minY + 0.5
-
+function rasterize(v0, v1, v2, c0, c1, c2, invArea, dW0Col, dW1Col, dW2Col, dW0Row, dW1Row, dW2Row, bias0, bias1, bias2, box, p0) {
     let w0Row = cross2d(v1, v2, p0) + bias0
     let w1Row = cross2d(v2, v0, p0) + bias1
     let w2Row = cross2d(v0, v1, p0) + bias2
 
-    let idxRow = box.minY * width + box.minX
+    let idxRow = box.minY * workerWidth + box.minX
 
     for (let y = box.minY; y < box.maxY; y++) {
         let idx = idxRow
@@ -224,19 +233,19 @@ function rasterize() {
 
                 const depth = alpha * v0.z + beta * v1.z + gamma * v2.z
 
-                if (depth < zBuffer[idx]) {
-                    zBuffer[idx] = depth
+                if (depth < localZBuffer[idx]) {
+                    localZBuffer[idx] = depth
 
-                    const r = alpha * c0.r + beta * c1.r + gamma * c2.r
-                    const g = alpha * c0.g + beta * c1.g + gamma * c2.g
-                    const b = alpha * c0.b + beta * c1.b + gamma * c2.b
+                    const r = alpha * c0.x + beta * c1.x + gamma * c2.x
+                    const g = alpha * c0.y + beta * c1.y + gamma * c2.y
+                    const b = alpha * c0.z + beta * c1.z + gamma * c2.z
 
                     let fIdx = idx << 2
 
-                    frameBuffer[fIdx] = r
-                    frameBuffer[++fIdx] = g
-                    frameBuffer[++fIdx] = b
-                    frameBuffer[++fIdx] = 255
+                    localFrameBuffer[fIdx] = r
+                    localFrameBuffer[++fIdx] = g
+                    localFrameBuffer[++fIdx] = b
+                    localFrameBuffer[++fIdx] = 255
                 }
             }
             idx++
@@ -244,7 +253,7 @@ function rasterize() {
             w1 += dW1Col
             w2 += dW2Col
         }
-        idxRow += width
+        idxRow += workerWidth
         w0Row += dW0Row
         w1Row += dW1Row
         w2Row += dW2Row
@@ -252,22 +261,32 @@ function rasterize() {
 }
 
 function fragmentShader() {
-    let idxRow = startIdxFragment
+    let idxRow = startIdxFrame
+    let localIdxRow = 0
+    let idx, localIdx, alpha
 
-    for (let y = boundingBox.minY; y < boundingBox.maxY; y++) {
-        let idx = idxRow
-        for (let x = boundingBox.minX; x < boundingBox.maxX; x++) {
-            const alpha = frameBuffer[idx + 3]
-            if (alpha === 0) {
-                const yH = (y / height)
+    for (let y = 0; y < HEIGHT; y++) {
+        idx = idxRow
+        localIdx = localIdxRow
+        for (let x = 0; x < workerWidth; x++) {
+            alpha = localFrameBuffer[localIdx + 3]
+            if (!alpha) {
+                const yH = (y / HEIGHT)
                 frameBuffer[idx] = (1 - yH) * 100 + 255 * yH
                 frameBuffer[idx + 1] = (1 - yH) * 171 + 255 * yH
                 frameBuffer[idx + 2] = (1 - yH) * 221 + 255 * yH
                 frameBuffer[idx + 3] = 255
+            } else {
+                frameBuffer[idx] = localFrameBuffer[localIdx]
+                frameBuffer[idx + 1] = localFrameBuffer[localIdx + 1]
+                frameBuffer[idx + 2] = localFrameBuffer[localIdx + 2]
+                frameBuffer[idx + 3] = localFrameBuffer[localIdx + 3]
             }
             idx += 4
+            localIdx += 4
         }
-        idxRow += deltaHFrag
+        idxRow += deltaFrameIdx
+        localIdxRow += deltaLocalFrameIdx
     }
 }
 
@@ -276,36 +295,43 @@ function render() {
 
     clearBuffers()
 
-    let idxBox = 0
+    let box = createBox(0, 0, 0, 0), v0 = vec3(0, 0, 0), v1 = vec3(0, 0, 0), v2 = vec3(0, 0, 0), c0 = vec3(0, 0, 0), c1 = vec3(0, 0, 0), c2 = vec3(0, 0, 0), invArea,
+        dW0Col, dW1Col, dW2Col, dW0Row, dW1Row, dW2Row, bias0, bias1, bias2, p0 = { x: 0, y: 0 }, localIdx = 0
 
-    let i = 0
+    while (doneArray.includes(0)) { }
 
-    while (done.includes(0)) { }
+    for (let i = 0; i < trianglesLen; i++) {
+        if (triangleData.getUint8(localIdx, true)) {
 
-    while (i < triangles.length) {
-        box.minX = trianglesBox[idxBox++];
-        box.minY = trianglesBox[idxBox++];
-        box.maxX = trianglesBox[idxBox++];
-        box.maxY = trianglesBox[idxBox++];
+            box.minX = triangleData.getInt16(localIdx + 1, true); box.minY = triangleData.getInt16(localIdx + 3, true)
+            box.maxX = triangleData.getInt16(localIdx + 5, true); box.maxY = triangleData.getInt16(localIdx + 7, true)
 
-        if (intersect()) {
-            const i0 = tIdxArray[i]
-            const i1 = tIdxArray[i + 1]
-            const i2 = tIdxArray[i + 2]
+            if (intersect(workerBox, box)) {
 
-            if (insideScreen(i0) || insideScreen(i1) || insideScreen(i2)) {
-                v0.x = screenVertices[i0]; v0.y = screenVertices[i0 + 1]; v0.z = screenVertices[i0 + 2];
-                v1.x = screenVertices[i1]; v1.y = screenVertices[i1 + 1]; v1.z = screenVertices[i1 + 2];
-                v2.x = screenVertices[i2]; v2.y = screenVertices[i2 + 1]; v2.z = screenVertices[i2 + 2];
-                
-                c0.r = screenColors[i0]; c0.g = screenColors[i0 + 1]; c0.b = screenColors[i0 + 2];
-                c1.r = screenColors[i1]; c1.g = screenColors[i1 + 1]; c1.b = screenColors[i1 + 2];
-                c2.r = screenColors[i2]; c2.g = screenColors[i2 + 1]; c2.b = screenColors[i2 + 2];
+                v0.x = triangleData.getInt32(localIdx + 9, true); v0.y = triangleData.getInt32(localIdx + 13, true); v0.z = triangleData.getFloat32(localIdx + 17, true)
+                v1.x = triangleData.getInt32(localIdx + 21, true); v1.y = triangleData.getInt32(localIdx + 25, true); v1.z = triangleData.getFloat32(localIdx + 29, true)
+                v2.x = triangleData.getInt32(localIdx + 33, true); v2.y = triangleData.getInt32(localIdx + 37, true); v2.z = triangleData.getFloat32(localIdx + 41, true)
 
-                rasterize()
+                c0.x = triangleData.getUint8(localIdx + 45, true); c0.y = triangleData.getUint8(localIdx + 46, true); c0.z = triangleData.getUint8(localIdx + 47, true)
+                c1.x = triangleData.getUint8(localIdx + 48, true); c1.y = triangleData.getUint8(localIdx + 49, true); c1.z = triangleData.getUint8(localIdx + 50, true)
+                c2.x = triangleData.getUint8(localIdx + 51, true); c2.y = triangleData.getUint8(localIdx + 52, true); c2.z = triangleData.getUint8(localIdx + 53, true)
+
+                invArea = triangleData.getFloat32(localIdx + 54, true)
+
+                dW0Col = triangleData.getFloat32(localIdx + 58, true); dW1Col = triangleData.getFloat32(localIdx + 62, true); dW2Col = triangleData.getFloat32(localIdx + 66, true)
+                dW0Row = triangleData.getFloat32(localIdx + 70, true); dW1Row = triangleData.getFloat32(localIdx + 74, true); dW2Row = triangleData.getFloat32(localIdx + 78, true)
+
+                bias0 = triangleData.getFloat32(localIdx + 82, true); bias1 = triangleData.getFloat32(localIdx + 86, true); bias2 = triangleData.getFloat32(localIdx + 90, true);
+
+                p0.x = box.minX + 0.5
+                p0.y = box.minY + 0.5
+
+                toLocal(box)
+
+                rasterize(v0, v1, v2, c0, c1, c2, invArea, dW0Col, dW1Col, dW2Col, dW0Row, dW1Row, dW2Row, bias0, bias1, bias2, box, p0)
             }
         }
-        i += 3
+        localIdx += 94
     }
 
     fragmentShader()
@@ -313,31 +339,35 @@ function render() {
 
 self.onmessage = (event) => {
     if (event.data.init) {
-        frameBuffer = new Uint8ClampedArray(event.data.sharedFrameBuffer);
-        zBuffer = new Int32Array(event.data.sharedZBuffer);
-        vertices = new Float32Array(event.data.sharedVertices);
-        colors = new Float32Array(event.data.sharedColors);
-        screenVertices = new Int32Array(event.data.sharedScreenVertices);
-        screenColors = new Uint8ClampedArray(event.data.sharedScreenColors);
-        trianglesBox = new Uint32Array(event.data.sharedTrianglesBox);
-        done = new Uint8Array(event.data.sharedDone);
-        matrix = new Float32Array(event.data.sharedMatrix);
-        triangles = new Uint32Array(event.data.sharedTriangles);
-        width = event.data.width
-        height = event.data.height
+        WIDTH = event.data.WIDTH
+        HEIGHT = event.data.HEIGHT
+        workerBox = event.data.workerBox
+        startBatch = event.data.triangleBatch.start
+        endBatch = event.data.triangleBatch.end
+        frameBuffer = new Uint8ClampedArray(event.data.sharedFrameBuffer)
+        matrix = new Float32Array(event.data.sharedMatrix)
+        triangleData = new DataView(event.data.sharedTriangleData)
+        vertices = event.data.vertices
+        colors = event.data.colors
+        triangles = event.data.triangles
+        triangleIdxArray = new Uint32Array(triangles.length)
+        centerX = WIDTH / 2
+        centerY = HEIGHT / 2
+        workerHeight = workerBox.maxY - workerBox.minY
+        workerWidth = workerBox.maxX - workerBox.minX
+        localFrameBuffer = new Uint8ClampedArray(workerHeight * workerWidth * 4)
+        localZBuffer = new Float32Array(workerHeight * workerWidth)
+        deltaFrameIdx = WIDTH * 4
+        deltaLocalFrameIdx = workerWidth * 4
+        startIdxFrame = workerBox.minX << 2
+        doneArray = new Uint8Array(event.data.sharedDone)
         workerIdx = event.data.workerIdx
-        triangleBatch = event.data.triangleBatch
-        boundingBox = event.data.boundingBox
-        centerX = width >> 1
-        centerY = height >> 1
-        vIdx = 3 * triangleBatch.start
-        startTidx = triangleBatch.start << 2
-        deltaHFrag = width << 2
-        startScreenIdx = boundingBox.minY * width + boundingBox.minX
-        startIdxFragment = startScreenIdx << 2
-        tIdxArray = new Uint32Array(triangles.length)
+        startTriangleIdx = startBatch * 3
+        startTriangleDataIdx = startBatch * 94
+        trianglesLen = event.data.trianglesLen
+
         for (let i = 0; i < triangles.length; i++) {
-            tIdxArray[i] = triangles[i] * 3
+            triangleIdxArray[i] = triangles[i] * 3
         }
         return
     }

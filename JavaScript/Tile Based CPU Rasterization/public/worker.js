@@ -2,14 +2,11 @@ let WIDTH,
     HEIGHT,
     frameBuffer,
     workerBox,
-    startBatch,
-    endBatch,
     matrix,
     triangleData,
     vertices,
     triangles,
     colors,
-    triangleIdxArray,
     centerX, centerY,
     localFrameBuffer,
     localZBuffer,
@@ -20,8 +17,6 @@ let WIDTH,
     startIdxFrame,
     doneArray,
     workerIdx,
-    startTriangleIdx,
-    startTriangleDataIdx,
     trianglesLen
 
 function vec3(x, y, z) {
@@ -119,9 +114,13 @@ function cross2d(a, b, p) {
 
 function vertexShader() {
     doneArray[workerIdx] = 0
-    let triangleIdx = startTriangleIdx
-    let triangleDataIdx = startTriangleDataIdx
+    const deltaTriangle = Math.ceil(trianglesLen / 11)
+    const startBatch = workerIdx * deltaTriangle
+    const endBatch = Math.min(startBatch + deltaTriangle, trianglesLen)
+    let triangleIdx = startBatch * 3
+    let triangleDataIdx = startBatch * 94
     let minX, minY, maxX, maxY, v0Idx, visible, area
+    
     let v = [vec3(0, 0, 0), vec3(0, 0, 0), vec3(0, 0, 0)]
     let c = [vec3(0, 0, 0), vec3(0, 0, 0), vec3(0, 0, 0)]
     for (let i = startBatch; i < endBatch; i++) {
@@ -131,7 +130,7 @@ function vertexShader() {
         maxY = 0
         visible = false
         for (let j = 0; j < 3; j++) {
-            v0Idx = triangleIdxArray[triangleIdx++]
+            v0Idx = triangles[triangleIdx++] * 3
 
             v[j].x = vertices[v0Idx]
             v[j].y = vertices[v0Idx + 1]
@@ -342,15 +341,12 @@ self.onmessage = (event) => {
         WIDTH = event.data.WIDTH
         HEIGHT = event.data.HEIGHT
         workerBox = event.data.workerBox
-        startBatch = event.data.triangleBatch.start
-        endBatch = event.data.triangleBatch.end
         frameBuffer = new Uint8ClampedArray(event.data.sharedFrameBuffer)
         matrix = new Float32Array(event.data.sharedMatrix)
         triangleData = new DataView(event.data.sharedTriangleData)
-        vertices = event.data.vertices
-        colors = event.data.colors
-        triangles = event.data.triangles
-        triangleIdxArray = new Uint32Array(triangles.length)
+        vertices = new Float32Array(event.data.sharedVertices)
+        colors = new Float32Array(event.data.sharedColors)
+        triangles = new Uint32Array(event.data.sharedTriangles)
         centerX = WIDTH / 2
         centerY = HEIGHT / 2
         workerHeight = workerBox.maxY - workerBox.minY
@@ -362,14 +358,10 @@ self.onmessage = (event) => {
         startIdxFrame = workerBox.minX << 2
         doneArray = new Uint8Array(event.data.sharedDone)
         workerIdx = event.data.workerIdx
-        startTriangleIdx = startBatch * 3
-        startTriangleDataIdx = startBatch * 94
         trianglesLen = event.data.trianglesLen
-
-        for (let i = 0; i < triangles.length; i++) {
-            triangleIdxArray[i] = triangles[i] * 3
-        }
         return
+    } else {
+        trianglesLen = event.data
     }
 
     render()

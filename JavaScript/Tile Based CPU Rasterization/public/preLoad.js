@@ -3,6 +3,11 @@ const canvas = document.getElementById("screen")
 const WIDTH = window.innerWidth
 const HEIGHT = window.innerHeight
 
+const CENTERX = WIDTH >> 1
+const CENTERY = HEIGHT >> 1
+
+const PI2 = Math.PI * 2
+
 canvas.width = WIDTH
 canvas.height = HEIGHT
 
@@ -20,24 +25,18 @@ const imageData = ctx.createImageData(WIDTH, HEIGHT)
 const frame = imageData.data
 
 const workersLen = 11
-const trianglesLen =  meshTriangles.length / 3
 
 const deltaWidth = Math.ceil(WIDTH / workersLen)
-const deltaTriangle = Math.ceil(trianglesLen / workersLen)
 
 let workDone = 0
 
 const workers = new Array(workersLen)
 const workerBox = new Array(workersLen)
-const workerTriangleBatch = new Array(workersLen)
 const sharedFrameBuffer = new SharedArrayBuffer(WIDTH * HEIGHT * 4)
 const frameBuffer = new Uint8ClampedArray(sharedFrameBuffer)
-const triangles = new Uint32Array(meshTriangles)
-const vertices = new Float32Array(meshVertices)
-const colors = new Float32Array(meshColors)
 const sharedMatrix = new SharedArrayBuffer(16 * 4)
 const matrix = new Float32Array(sharedMatrix)
-const sharedTriangleData = new SharedArrayBuffer(trianglesLen * 33 * 4)
+const sharedTriangleData = new SharedArrayBuffer(maxTriangleCapacity * 94)
 const sharedDone = new SharedArrayBuffer(workersLen)
 
 let lastFrameTime = Date.now();
@@ -53,14 +52,6 @@ for (let i = 0; i < workersLen; i++) {
         maxY: HEIGHT
     }
 
-    const startTriangle = i * deltaTriangle
-    const endTriangle = Math.min((i + 1) * deltaTriangle, trianglesLen)
-
-    workerTriangleBatch[i] = {
-        start: startTriangle,
-        end: endTriangle
-    }
-
     const worker = new Worker("worker.js")
 
     worker.onmessage = (_) => { workDone++ }
@@ -68,13 +59,17 @@ for (let i = 0; i < workersLen; i++) {
     workers[i] = worker
 }
 
-const playerVelocity = 0.1
+const playerVelocity = 0.005
+const jumpForce = 0.05
 const mouseSensitivity = 0.002
 
 const pi2 = Math.PI / 2
 
-let cameraX = -2, cameraY = 1, cameraZ = 4
+let cameraX = -2, cameraY = 1, cameraZ = -10
 let angleX = 0, angleY = 0
+
+let mouse1 = false
+let mouse2 = false
 
 canvas.addEventListener('mousemove', function (event) {
     if (document.pointerLockElement === canvas) {
@@ -85,6 +80,23 @@ canvas.addEventListener('mousemove', function (event) {
             angleX = pi2
         else if (angleX <= -pi2)
             angleX = -pi2
+    }
+});
+
+canvas.addEventListener('mouseup', function (event) {
+    if (event.button === 0) { // 0 representa o botão esquerdo (mouse1)
+        mouse1 = false
+    }
+    if (event.button === 2){
+        mouse2 = false
+    }
+});
+canvas.addEventListener('mousedown', function (event) {
+    if (event.button === 0) { // 0 representa o botão esquerdo (mouse1)
+        mouse1 = true
+    }
+    if (event.button === 2){
+        mouse2 = true
     }
 });
 

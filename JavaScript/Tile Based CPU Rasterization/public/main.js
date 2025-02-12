@@ -3,34 +3,7 @@ const aspectRatio = HEIGHT / WIDTH
 const near = 1
 const far = 1000
 
-let fps = 0, frameCount = 0
-
-function updatePos() {
-    const psin = playerVelocity * Math.sin(angleY)
-    const pcos = playerVelocity * Math.cos(angleY)
-    if (keyboardKeys["w"]) {
-        cameraX += psin
-        cameraZ -= pcos
-    }
-    if (keyboardKeys["s"]) {
-        cameraX -= psin
-        cameraZ += pcos
-    }
-    if (keyboardKeys["a"]) {
-        cameraX += pcos
-        cameraZ += psin
-    }
-    if (keyboardKeys["d"]) {
-        cameraX -= pcos
-        cameraZ -= psin
-    }
-    if (keyboardKeys["Shift"]) {
-        cameraY -= playerVelocity
-    }
-    if (keyboardKeys[" "]) {
-        cameraY += playerVelocity
-    }
-}
+gravity = -0.0005
 
 function setup() {
     for (let i = 0; i < workersLen; i++) {
@@ -40,12 +13,11 @@ function setup() {
             HEIGHT,
             sharedFrameBuffer,
             workerBox: workerBox[i],
-            triangleBatch: workerTriangleBatch[i],
             sharedMatrix,
             sharedTriangleData,
-            vertices,
-            colors,
-            triangles,
+            sharedVertices,
+            sharedColors,
+            sharedTriangles,
             sharedDone,
             workerIdx: i,
             trianglesLen
@@ -53,19 +25,14 @@ function setup() {
     }
 
     for (const worker of workers) {
-        worker.postMessage(0)
+        worker.postMessage(trianglesLen)
     }
 }
 
-function renderFPS(fps) {
-    const fpsText = `FPS: ${fps}`;
-
-    ctx.fillText(fpsText, 10, 30);
-}
-
-
-
 function render() {
+    if (workDone < workersLen)
+        return
+    workDone = 0
     const currentTime = Date.now();
     const deltaTime = currentTime - lastFrameTime;
 
@@ -78,7 +45,12 @@ function render() {
 
     frame.set(frameBuffer)
     ctx.putImageData(imageData, 0, 0)
-    renderFPS(fps)
+    ctx.fillText(`FPS: ${fps}`, 10, 30);
+    ctx.fillText(`Position: ${intCameraX}, ${intCameraY}, ${intCameraZ}`, 10, 60);
+    ctx.fillText(`Chunk: ${chunkX}, ${chunkZ}`, 10, 90);
+    ctx.beginPath();
+    ctx.arc(CENTERX, CENTERY, 5, 0, PI2); // Desenha um círculo completo
+    ctx.fill(); // Preenche o círculo
 
     perspective(matrix, fov, aspectRatio, near, far)
     rotateX(matrix, angleX)
@@ -86,17 +58,14 @@ function render() {
     translate(matrix, cameraX, cameraY, cameraZ)
 
     for (const worker of workers) {
-        worker.postMessage(0)
+        worker.postMessage(trianglesLen)
     }
 }
 
 function update() {
     updatePos()
-    if (workDone >= workersLen) {
-        workDone = 0
-        render()
-    }
-    
+
+    render()
     requestAnimationFrame(update)
 }
 

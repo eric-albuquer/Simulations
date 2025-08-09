@@ -1,0 +1,22 @@
+# Compilador e flags
+CC = gcc
+CFLAGS = -Wall -std=c11 -Iraylib-5.5_win64_mingw-w64/include -Iinclude -O3 -march=native -ffast-math -funroll-loops -flto -fno-math-errno -fopenmp-simd
+LDFLAGS = -Lraylib-5.5_win64_mingw-w64/lib -lraylib -lopengl32 -lgdi32 -lwinmm -mconsole -fopenmp -flto
+
+# Arquivos-fonte e destino
+SRC = $(wildcard src/*.c main.c)
+OUT = game.exe
+
+# Alvo padrão
+all: $(OUT)
+
+# Como gerar o executável
+$(OUT): $(SRC)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+# Limpeza
+clean:
+	del /Q $(OUT)
+
+# Uso:
+# mingw32-make -f MakeFile && game.exe

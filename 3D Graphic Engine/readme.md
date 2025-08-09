@@ -96,7 +96,7 @@ A engine segue um **pipeline gráfico próprio**, implementado em C, com as segu
 
 MIT License
 
-Copyright (c) 2025 [Seu Nome]
+Copyright (c) 2025 Eric Albuquerque
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

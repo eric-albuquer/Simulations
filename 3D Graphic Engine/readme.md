@@ -1,8 +1,11 @@
 # 🖥️ CPU-Driven 3D Graphics Engine
 
-Uma **engine gráfica 3D completa**, desenvolvida inteiramente em **C**, utilizando a **Raylib** apenas para controlar os pixels da tela (framebuffer).  
+Uma **engine gráfica 3D completa**, desenvolvida inteiramente em **C**, utilizando a **Raylib 5.5** apenas para controlar os pixels da tela (framebuffer).  
 Todo o pipeline gráfico é processado **100% na CPU** e somente o resultado final é enviado para a GPU para exibição no monitor.  
 Embora tenha sido criada para **fins de estudo**, os resultados de desempenho foram impressionantes.
+
+> ℹ️ O projeto utiliza **comandos de compilação no Makefile configurados para Windows**.  
+> Caso utilize Linux ou macOS, será necessário adaptar os comandos para seu ambiente.
 
 ---
 
